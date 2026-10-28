@@ -1733,7 +1733,17 @@ static int run_tracer(DwarfParser &dwarfparser, const TraceTarget &target) {
   report_ringbuf_drops();
 
   clog << "Clean up the eBPF program" << endl;
-  return timeout_occurred ? -1 : -errno;
+  // main() returns this value straight to the shell, so the two branches above
+  // must map onto the usual conventions: reaching the -t deadline is the
+  // normal way for a bounded run to end (0), and a ring buffer failure is the
+  // only real error (1).  The previous `timeout_occurred ? -1 : -errno` did the
+  // exact opposite: a fully successful `osdtrace -t 30` exited with 255 and
+  // looked like a failure to every script and CI job, while the error path
+  // leaked a raw -errno (-5 -> 251 for a failed consume) and could even report
+  // success when errno happened to be 0.  radostrace already returns
+  // `ret < 0 ? 1 : 0` for the same loop, so this also makes the two tools
+  // consistent.
+  return ret < 0 ? 1 : 0;
 }
 
 int main(int argc, char **argv) {
